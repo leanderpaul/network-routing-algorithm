@@ -1,0 +1,11 @@
+# Editor
+/.vscode
+
+# Build
+/build
+/cmake-cache
+
+# Log files
+*.routes
+*.pcap
+*.tr
