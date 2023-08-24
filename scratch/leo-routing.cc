@@ -40,6 +40,7 @@ int main(int argc, char* argv[]) {
   /** Simulation constants */
   const int numberOfSatellites = 24;
   const int numberOfConnections = 30;
+  const int numberOfDevices = 28;
 
   /** Parsing the command line arguments */
   CommandLine cmd(__FILE__);
@@ -53,13 +54,26 @@ int main(int argc, char* argv[]) {
       {2, 0},   {0, 3},   {3, 1},   {1, 4},   {2, 5},   {3, 6},   {4, 7},   {8, 5},   {5, 9},   {9, 6},
       {6, 10},  {10, 7},  {7, 11},  {8, 12},  {9, 13},  {10, 14}, {11, 15}, {12, 16}, {16, 13}, {13, 17},
       {17, 14}, {14, 18}, {18, 15}, {16, 19}, {17, 20}, {18, 21}, {19, 22}, {22, 20}, {20, 23}, {23, 21}};
+  for (uint32_t index = 0; index < numberOfSatellites; index++) {
+    Ptr<Node> satellite = satellites.Get(index);
+    Names::Add("Satellite " + std::to_string(index + 1), satellite);
+  }
 
   /** Creating the source and destination nodes */
   NodeContainer devices;
-  devices.Create(2);
+  devices.Create(numberOfDevices);
   Ptr<Node> sourceDevice = devices.Get(0);
+  Ptr<Node> destinationDevice = devices.Get(15);
+  int deviceConnections[numberOfDevices] = {2,  2,  0,  0,  3,  3,  1,  1,  4,  4,  11, 11, 15, 15,
+                                            21, 21, 23, 23, 20, 20, 22, 22, 19, 19, 12, 12, 8,  8};
+  for (uint32_t index = 0; index < numberOfDevices; index++) {
+    Ptr<Node> device = devices.Get(index);
+    if (index == 0 || index == 15) {
+      continue;
+    }
+    Names::Add("Device " + std::to_string(index + 1), device);
+  }
   Names::Add("Source Device", sourceDevice);
-  Ptr<Node> destinationDevice = devices.Get(1);
   Names::Add("Destination Device", destinationDevice);
 
   /** Creating point to point channel connection between the satellites */
@@ -67,7 +81,7 @@ int main(int argc, char* argv[]) {
   PointToPointHelper p2p;
   p2p.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
   p2p.SetChannelAttribute("Delay", StringValue("1ms"));
-  NetDeviceContainer netDeviceContainers[numberOfConnections];
+  NetDeviceContainer netDeviceContainers[numberOfConnections + numberOfDevices];
   for (uint32_t index = 0; index < numberOfConnections; index++) {
     std::tie(a, b) = satelliteConstellation[index];
     NodeContainer nodeContainer = NodeContainer(satellites.Get(a), satellites.Get(b));
@@ -75,10 +89,14 @@ int main(int argc, char* argv[]) {
   }
 
   /** Creating internet connection for the devices */
-  NodeContainer sourceWithSatellite = NodeContainer(satellites.Get(0), sourceDevice);
-  NodeContainer destinationWithSatellite = NodeContainer(satellites.Get(23), destinationDevice);
-  NetDeviceContainer sourceNetDevice = p2p.Install(sourceWithSatellite);
-  NetDeviceContainer destinationNetDevice = p2p.Install(destinationWithSatellite);
+  PointToPointHelper deviceP2p;
+  deviceP2p.SetDeviceAttribute("DataRate", StringValue("10Mbps"));
+  deviceP2p.SetChannelAttribute("Delay", StringValue("30ms"));
+  for (uint32_t index = 0; index < numberOfDevices; index++) {
+    int satelliteIndex = deviceConnections[index];
+    NodeContainer nodeContainer = NodeContainer(satellites.Get(satelliteIndex), devices.Get(index));
+    netDeviceContainers[numberOfConnections + index] = deviceP2p.Install(nodeContainer);
+  }
 
   /** Setting up the routing table */
   RipHelper ripHelper;
@@ -100,34 +118,39 @@ int main(int argc, char* argv[]) {
   /** Assigning IP addresses to all the nodes */
   Ipv4AddressHelper addressHelper;
   Ipv4Address address;
-  Ipv4InterfaceContainer interfaceContainers[numberOfConnections];
+  Ipv4InterfaceContainer interfaceContainers[numberOfConnections + numberOfDevices];
   for (uint32_t index = 0; index < numberOfConnections; index++) {
-    std::string baseIp = "10.0." + std::to_string(index + 1) + ".0";
+    std::string baseIp = "10." + std::to_string(index + 1) + ".0.0";
     address.Set(baseIp.c_str());
-    addressHelper.SetBase(address, "255.255.255.0");
+    addressHelper.SetBase(address, "255.255.0.0");
     NetDeviceContainer netDeviceContainer = netDeviceContainers[index];
     interfaceContainers[index] = addressHelper.Assign(netDeviceContainer);
   }
 
   /** Assigning IP address for the devices */
-  addressHelper.SetBase("10.0.0.0", "255.255.255.0");
-  Ipv4InterfaceContainer sourceDeviceInterface = addressHelper.Assign(sourceNetDevice);
-  addressHelper.SetBase("10.0.31.0", "255.255.255.0");
-  Ipv4InterfaceContainer destinationDeviceInterface = addressHelper.Assign(destinationNetDevice);
+  for (uint32_t index = 0; index < numberOfDevices; index++) {
+    int satelliteIndex = deviceConnections[index] + 1;
+    int deviceIndex = (index % 2) + 1;
+    std::string baseIp = "10." + std::to_string(satelliteIndex) + "." + std::to_string(deviceIndex) + ".0";
+    address.Set(baseIp.c_str());
+    addressHelper.SetBase(address, "255.255.255.0");
+    NetDeviceContainer netDeviceContainer = netDeviceContainers[numberOfConnections + index];
+    interfaceContainers[numberOfConnections + index] = addressHelper.Assign(netDeviceContainer);
+  }
 
   /** Setting up static routing for the devices */
-  Ipv4RoutingHelper::GetRouting<Ipv4StaticRouting>(sourceDevice->GetObject<Ipv4>()->GetRoutingProtocol())->SetDefaultRoute("10.0.0.1", 1);
+  Ipv4RoutingHelper::GetRouting<Ipv4StaticRouting>(sourceDevice->GetObject<Ipv4>()->GetRoutingProtocol())->SetDefaultRoute("10.1.0.1", 1);
   Ipv4RoutingHelper::GetRouting<Ipv4StaticRouting>(destinationDevice->GetObject<Ipv4>()->GetRoutingProtocol())
-      ->SetDefaultRoute("10.0.31.1", 1);
+      ->SetDefaultRoute("10.22.0.1", 1);
 
   /** Printing the topology details */
   if (printNodeInfo) {
-    Simulator::Schedule(Seconds(10), &printNodeDetails, satellites);
-    Simulator::Schedule(Seconds(10), &printNodeDetails, devices);
+    Simulator::Schedule(Seconds(0), &printNodeDetails, satellites);
+    Simulator::Schedule(Seconds(0), &printNodeDetails, devices);
   }
 
   /** Setting up the ping application */
-  PingHelper ping(Ipv4Address("10.0.31.2"));
+  PingHelper ping(Ipv4Address("10.22.2.2"));
   ping.SetAttribute("Interval", StringValue("1s"));
   ping.SetAttribute("Size", StringValue("1024"));
 

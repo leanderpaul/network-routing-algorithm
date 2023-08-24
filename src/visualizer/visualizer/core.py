@@ -1189,7 +1189,7 @@ class Visualizer(GObject.GObject):
                 obj = self.channels[node_id]
             pos_x, pos_y = 0, 0
             if seen_nodes >= 24:
-                pos_x, pos_y = self.calculatePosition(node_id) if node_id < 24 else (70, 100) if node_id % 2 == 0 else (250, 240)
+                pos_x, pos_y = self.calculatePosition(node_id) if node_id < 24 else self.calculateDevicePosition(node_id - 24)
             else: 
                 pos_x, pos_y =  [float(s) for s in node.attr['pos'].split(',')]
             obj.set_position(pos_x, pos_y)
@@ -1212,6 +1212,31 @@ class Visualizer(GObject.GObject):
                 y_pos = min_cord + (idx * spacing)
                 x_padding = (index - (acc - element)) * 2 * spacing
                 x_pos = (max_x - element) * spacing + min_cord + x_padding
+                break
+        return (x_pos, y_pos)
+    
+    def calculateDevicePosition(self, index):
+        arr = [10, 4, 10, 4]
+        x_cord = 110
+        y_cord = 160
+        spacing = 10
+        min_cord = 60
+        max_cord = 280
+        
+        acc = 0
+        x_pos = 0
+        y_pos = 0
+        for idx, element in enumerate(arr):
+            acc += element
+            if index < acc:
+                if idx % 2 == 0:
+                    increment = index if idx == 0 else (acc - index -1)
+                    x_pos = x_cord + (increment * spacing)
+                    y_pos = min_cord if idx == 0 else max_cord
+                else:
+                    x_pos = max_cord if idx == 1 else min_cord
+                    increment = (index - acc + element) if idx == 1 else (acc - index- 1)
+                    y_pos = y_cord + (increment * spacing)
                 break
         return (x_pos, y_pos)
 

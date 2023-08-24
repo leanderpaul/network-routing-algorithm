@@ -7,6 +7,19 @@ sudo apt install build-essential libsqlite3-dev libboost-all-dev libssl-dev git 
 pip install cppyy kiwi
 ```
 
+## Clean
+
+```sh
+./ns3 clean
+```
+
+## Build and Compile Code
+
+```sh
+./ns3 configure --enable-examples --enable-tests
+./ns3 build
+```
+
 ## Run the application
 
 ```sh
